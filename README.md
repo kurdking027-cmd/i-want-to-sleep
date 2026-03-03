@@ -139,3 +139,24 @@ This scaffold includes a comprehensive set of modern web development tools:
 ---
 
 Built with ❤️ for the developer community. Supercharged by [Z.ai](https://chat.z.ai) 🚀
+
+## Deployment notes
+
+The MediMate AI assistant relies on GLM-4.7 via the `@heyputer/puter.js` SDK. To make
+it work after you deploy (e.g. on Vercel) you **must** provide a Puter API key.
+
+1. In your project settings add an environment variable:
+   ```bash
+   PUTER_API_KEY=your_puter_token_here
+   ```
+2. Optionally configure other Puter settings (e.g. `PUTER_API_ORIGIN`).
+3. Re-deploy; the `/api/chat` endpoint will verify the variable and
+   return an error message if missing.
+
+Without this key the server responds with a clear 500 error, and no AI
+responses will be generated.
+
+The client side still attempts to import `puter.js` directly for in-browser
+usage, but silently falls back to the server endpoint when it isn't
+available. In most deployments the server route is preferred.
+
