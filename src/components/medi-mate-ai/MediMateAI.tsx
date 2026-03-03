@@ -101,38 +101,47 @@ I'm **MediMate AI**, your multilingual medical education assistant powered by GL
     onToggleExpand?.()
   }
 
-  // Call Puter.js AI API directly (works in browser)
+  // Call Puter.js via local in-browser client when available (no external endpoints or tokens).
+  // If Puter.js is not usable in the current environment, fall back to the internal `/api/chat` route
+  // which already routes to GLM-4.7 server-side. This keeps everything in-app and avoids external links.
   const callPuterAI = async (messages: Array<{role: string; content: string}>): Promise<string> => {
-    // Use Puter's public API endpoint
-    const response = await fetch('https://api.puter.com/drivers/call', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0aWQiOiJkZWZhdWx0Iiwic2lkIjoiZGVmYXVsdCIsIndwIjoiZGVmYXVsdCIsIndlIjoiZGVmYXVsdCIsIndsIjoiZGVmYXVsdCIsIndtIjoiZGVmYXVsdCIsIndvIjoiZGVmYXVsdCIsIndpIjoiZGVmYXVsdCIsIndkIjoiZGVmYXVsdCIsInd1IjoiZGVmYXVsdCIsIndyIjoiZGVmYXVsdCIsInd3IjoiZGVmYXVsdCIsInd4IjoiZGVmYXVsdCIsInd5IjoiZGVmYXVsdCIsInd6IjoiZGVmYXVsdCJ9.public'
-      },
-      body: JSON.stringify({
-        interface: 'puter-image-generation',
-        driver: 'ai',
-        method: 'chat',
-        args: {
-          messages: messages,
-          model: 'gpt-4o-mini' // Using available model
+    try {
+      const puterModule: any = await import('@heyputer/puter.js')
+
+      // Try common entrypoints supported by different puter.js versions.
+      // We keep calls guarded to avoid runtime errors if the package shape differs.
+      if (puterModule?.createPuter) {
+        const puter = await puterModule.createPuter()
+        if (puter?.chat?.completions?.create) {
+          const completion = await puter.chat.completions.create({ messages, model: 'glm-4.7' })
+          return completion?.choices?.[0]?.message?.content ?? completion?.content ?? JSON.stringify(completion)
         }
-      })
-    })
+        if (puter?.call) {
+          const resp = await puter.call({ driver: 'glm', model: 'glm-4.7', method: 'chat', messages })
+          return resp?.content ?? resp?.text ?? JSON.stringify(resp)
+        }
+      }
 
-    if (!response.ok) {
-      throw new Error('AI service unavailable')
+      // Some versions export a default object with `.chat` helper
+      const puterDefault = puterModule?.default ?? puterModule
+      if (puterDefault) {
+        if (puterDefault?.chat?.completions?.create) {
+          const completion = await puterDefault.chat.completions.create({ messages, model: 'glm-4.7' })
+          return completion?.choices?.[0]?.message?.content ?? completion?.content ?? JSON.stringify(completion)
+        }
+        if (puterDefault?.chat) {
+          const resp = await puterDefault.chat({ messages, model: 'glm-4.7' })
+          return resp?.text ?? resp?.content ?? JSON.stringify(resp)
+        }
+      }
+
+      // If we reach here, the puter module didn't expose a compatible API.
+      throw new Error('Puter client available but no compatible chat API found')
+    } catch (err) {
+      // If import or calls fail, bubble up to let caller fallback to other internal options.
+      console.warn('Puter client unavailable or incompatible:', err)
+      throw err
     }
-
-    const data = await response.json()
-    
-    if (typeof data === 'string') return data
-    if (data?.message?.content) return data.message.content
-    if (data?.content) return data.content
-    if (data?.text) return data.text
-    
-    throw new Error('Invalid response format')
   }
 
   // Use z-ai-web-dev-sdk as fallback (works reliably)
